@@ -1,6 +1,7 @@
 #!/bin/env python
 import argparse
 from desktop_file_gen.desktop import DesktopEntry
+from desktop_file_gen.lib import IS_DEBUG
 
 
 def parse_args():
@@ -26,7 +27,10 @@ def main():
             desktop.save()
         except Exception as e:
             print(f"Error creating .desktop file for {p}: {e}")
-            continue
+            if IS_DEBUG:
+                raise
+            else:
+                continue
 
 
 if __name__ == "__main__":

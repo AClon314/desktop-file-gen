@@ -121,7 +121,7 @@ async def version(path: str):
 
 def regex_version(text):
     ver = PATTERN_VERSION.finditer(text)
-    ver = next(ver)
+    ver = next(ver, None)
     ver = ver.group(0) if ver else None
     return ver
 

@@ -113,6 +113,7 @@ class DesktopEntry:
             self.Path = _path.parent if _path.parent != Path('.') else None
             self.Exec = path
             self.Name = _path.stem
+            self.save()
             _version = await version(path)
             if _version is None:
                 _version = regex_version(path)
