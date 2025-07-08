@@ -111,10 +111,9 @@ class DesktopEntry:
         else:
             self.Type = 'Application'
             self.Path = _path.parent
-            self.Exec = str(_path)
+            self.Exec = f"'{_path}'"
             self.Name = _path.stem
-            self.save()
-            # self.Keywords = gpt(self.Name) # TODO: use gpt to generate keywords
+            self.Icon = self.Name.lower()
             _version = await version(path)
             self.Version = _version
         return self
