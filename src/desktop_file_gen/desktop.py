@@ -90,7 +90,7 @@ class DesktopEntry:
         self = aio.run(self.init(path)) if path else None
 
     async def init(self, path: str):
-        _path = Path(path)
+        _path = Path(path).resolve()
         if '://' in path:
             self.Type = 'Link'
             self.URL = path
@@ -110,13 +110,12 @@ class DesktopEntry:
             self.Name = _path.name
         else:
             self.Type = 'Application'
-            self.Path = _path.parent if _path.parent != Path('.') else None
-            self.Exec = path
+            self.Path = _path.parent
+            self.Exec = str(_path)
             self.Name = _path.stem
             self.save()
+            # self.Keywords = gpt(self.Name) # TODO: use gpt to generate keywords
             _version = await version(path)
-            if _version is None:
-                _version = regex_version(path)
             self.Version = _version
         return self
 
@@ -125,6 +124,7 @@ class DesktopEntry:
             To = self.Path.joinpath(self.Name + '.desktop') if self.Path else Path(self.Name + '.desktop')
         with open(To, 'w') as f:
             f.write(str(self))
+        Log.info(f'{To=}')
         return To
 
 

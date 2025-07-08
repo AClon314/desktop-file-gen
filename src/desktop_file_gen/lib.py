@@ -1,13 +1,9 @@
 #!/bin/env python
 import os
 import re
-import sys
 import logging
 import asyncio as aio
 from platformdirs import user_data_path
-from typing import Literal, Callable, Any, ParamSpec, TypeVar, cast
-PS = ParamSpec('PS')
-TV = TypeVar('TV')
 IS_DEBUG = os.getenv('DEBUG')
 if IS_DEBUG:
     logging.basicConfig(level=logging.DEBUG)
@@ -17,106 +13,33 @@ Log = logging.getLogger(__name__)
 __appname__ = __name__.split('.')[0]
 
 
-def copy_kwargs(
-    kwargs_call: Callable[PS, Any]
-) -> Callable[[Callable[..., TV]], Callable[PS, TV]]:
-    """Decorator does nothing but returning the casted original function"""
-    def return_func(func: Callable[..., TV]) -> Callable[PS, TV]:
-        return cast(Callable[PS, TV], func)
-    return return_func
-
-
-async def popen(
-    cmd: str,
-    mode: Literal['realtime', 'wait', 'no-wait'] = 'wait',
-    Raise=False,
-    log: Callable = Log.warning,
-    timeout=10,
-    **kwargs
-):
-    """Used on long running commands
-
-    Args:
-        mode (str):
-            - realtime: **foreground**, print in real-time
-            - wait: await until finished
-            - no-wait: **background**, immediately return, suitable for **forever-looping**, use:
-            p = await popen('cmd', mode='bg')
-            await p.expect(pexpect.EOF, async_=True)
-            print(p.before.decode().strip())
-        kwargs: `pexpect.spawn()` args
-
-    Returns:
-        process (pexpect.spawn):
-    """
-    import pexpect
-    Log.info(f"{mode}: '{cmd}'")
-    p = pexpect.spawn(cmd, timeout=timeout, **kwargs)
-    FD = sys.stdout.fileno()
-    def os_write(): return os.write(FD, p.read_nonblocking(4096))
-    sig = 0
-    if mode == 'realtime':
-        while p.isalive():
-            try:
-                os_write()
-            except pexpect.EOF:
-                break
-            except pexpect.TIMEOUT:
-                log(f"Timeout: {cmd}")
-                p.kill(sig)
-                sig = 9
-            except Exception:
-                raise
-            await aio.sleep(0.03)
-        try:
-            os_write()
-        except pexpect.EOF:
-            pass
-    elif mode == 'wait':
-        while p.isalive():
-            try:
-                await p.expect(pexpect.EOF, async_=True)
-            except pexpect.TIMEOUT:
-                log(f"Timeout: {cmd}")
-                p.kill(sig)
-                sig = 9
-            except Exception:
-                raise
-    elif mode == 'no-wait':
-        ...
-    else:
-        raise ValueError(f"Invalid mode: {mode}")
-    if p.exitstatus != 0:
-        if Raise:
-            raise ChildProcessError(f"{cmd}")
-        else:
-            log(f'{p.exitstatus} from "{cmd}" → {p.before}')
-    return p
-
-
-@copy_kwargs(popen)
-async def echo(*args, **kwargs):
-    p = await popen(*args, mode='wait', **kwargs)
-    if p.before and isinstance(p.before, bytes):
-        text = p.before.decode()
-        return p, text
-    else:
-        raise Exception(f"{args}, {kwargs}")
-
 PATTERN_VERSION = re.compile(r'\d+\.\d+(?:\.\d+)?')
+
+
+async def echo(cmd: str, timeout: int = 2):
+    from asyncio.subprocess import PIPE
+    p = await aio.create_subprocess_shell(cmd=cmd, stdout=PIPE, stderr=PIPE)
+    if p.stdout is None:
+        raise RuntimeError(f'`{cmd}` failed to run, stdout is None')
+    ret = await aio.wait_for(p.wait(), timeout=timeout)
+    out = await p.stdout.read()
+    out = out.decode().strip()
+    return p, out
 
 
 async def version(path: str):
     __ = '--'
     tasks = [
-        echo(f'{path} {__[i:]}version', timeout=2, log=Log.debug) for i in range(3)
+        echo(f'{path} {__[i:]}version') for i in range(3)
     ]
     tasks = await aio.gather(*tasks)
     for t in tasks:
         p, text = t
         Log.debug(text)
-        if p.exitstatus == 0:
-            return regex_version(text)
+        ver = regex_version(text)
+        if p.returncode == 0 and (ver := regex_version(text)):
+            Log.info(f'{ver=}')
+            return ver
 
 
 def regex_version(text):
